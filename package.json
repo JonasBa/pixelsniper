@@ -1,0 +1,18 @@
+{
+  "name": "screenshotservice",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "nodemon src/index.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.18.2",
+    "express": "^4.16.2",
+    "glob": "^7.1.2",
+    "http": "^0.0.0",
+    "nodemon": "^1.14.1",
+    "pixelmatch": "^4.0.2",
+    "request": "^2.83.0"
+  }
+}
