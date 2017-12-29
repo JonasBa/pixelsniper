@@ -1,4 +1,4 @@
-import {main} from './src/screenshot';
 
-export default main;
+const screenshots = require('./src/index.js');
 
+module.exports = screenshots.main
