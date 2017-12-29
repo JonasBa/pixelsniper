@@ -1,64 +1,67 @@
 
-const fs = require('fs'),
-      express = require('express'),
-      path = require('path'),
-      bodyParser = require('body-parser');
+const runTests = require('./screenshot_tests'),
+      { spawn, exec, fork } = require('child_process'),
+      rimraf = require('rimraf');
 
-const asyncMiddleware = fn =>
-  (req, res, next) => {
-    Promise.resolve(fn(req, res, next))
-      .catch(next);
-  };
+const processes = parseInt(process.env.builders) || 1;
 
-const app = express();
-app.use(bodyParser());
-
-
-
-
-async function checkBranchExists(branchName) {
-  return new Promise((resolve, reject) => {
-    const branchPath = path.resolve(`./${branchName}`)
-    fs.exists(branchPath, exists => {
-      if(!exists) {
-        fs.mkdir(path.resolve(`./${branchName}`), err => {
-          if(!err){
-            resolve();
-          }
-        })
-      } else {
-        resolve()
-      }
-    });
-  })
+const config = {
+  baseUrl: 'http://localhost:3000',
+  master: 'master',
+  pages: [
+    {
+      name: 'home',
+      path: '/',
+    },
+    {
+      name: 'getting-started',
+      path: '/getting-started/getting-started.html',
+    },{
+      name: 'components',
+      path: '/getting-started/using-components.html'
+    }
+  ]
 }
 
-async function checkScreenShotExists(branchName, screenshot) {
-  return new Promise((resolve, reject) => {
-    const filePath = path.resolve(`./${branchName}/${screenshot}.png`)
 
-    fs.exists(filePath, exists => {
-      if(!exists){
-        resolve(404)
-      } else {
-        resolve(filePath);
+async function main(){
+  let allWorkers = 0;
+
+  if(processes > 1) {
+    let k,j,temparray,chunk = processes;
+
+    for (k = 0, j = config.pages.length; k < j; k += chunk) {
+      const workerConfig = {
+        ...config,
       }
-    });
-  });
-}
 
-app.get('/screenshot', asyncMiddleware(async(req, resp) => {
-  const {branch, screenshot} = req.query;
-  const results = await checkBranchExists(branch);
-  const fileExists = await checkScreenShotExists(branch, screenshot);
-  console.log(fileExists)
-  if(fileExists === 404) {
-    resp.send(404)
+      workerConfig.pages = config.pages.slice(k, k + chunk)
+
+      const worker = fork('./src/screenshot.js');
+      worker.send(workerConfig)
+
+      worker.on('exit', code => {
+        onAllWorkersDone()
+      })
+    }
+
   } else {
-    resp.download(path.resolve(`./${branch}/${screenshot}.png`))
-  }
-}));
+    const worker = fork('./src/screenshot.js');
+    worker.send(config)
 
-app.listen('3001', () => {
-  console.log('server listening on localhost:3000')
-});
+    worker.on('exit', code => {
+      onAllWorkersDone()
+    })
+  }
+
+  async function onAllWorkersDone(){
+    allWorkers++;
+
+    if(allWorkers === processes){
+      await runTests();
+
+      // rimraf.sync('./screenshots_temp')
+      // rimraf.sync('./_master_temp/*.png')
+    }
+  }
+}
