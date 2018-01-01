@@ -5,7 +5,10 @@ const fs = require('fs'),
       request = require('request'),
       pixelmatch = require('pixelmatch'),
       PNG = require('pngjs').PNG,
-      { exec } = require('child_process');
+      { exec } = require('child_process'),
+      chalk = require('chalk'),
+      Spinner = require('cli-spinner').Spinner,
+      logSymbols = require('log-symbols');
 
 const last = arr => arr[arr.length-1];
 
@@ -43,19 +46,31 @@ function checkRegression(repo, branchName, fileName) {
 
     const originalScreenshot = fs.createReadStream(`./_master_temp/${name}_temp.png`).pipe(new PNG()).on('parsed', doneReading),
     newScreenshot = fs.createReadStream(`./screenshots_temp/${name}.png`).pipe(new PNG()).on('parsed', doneReading);
-    
+
     let filesRead = 0;
-    
+
     function doneReading() {
       if (++filesRead < 2) return;
-      const diff = new PNG({width: originalScreenshot.width, height: newScreenshot.height}),
+      const diff = new PNG({width: originalScreenshot.width, height: originalScreenshot.height}),
       stream = fs.createWriteStream(`./_master_temp/diffs/${name}_diff.png`);
       
-      const diffPixels = pixelmatch(originalScreenshot.data, newScreenshot.data, diff.data, originalScreenshot.width, originalScreenshot.height, {threshold: 0.01});
+      var spinner = new Spinner(chalk.green('Comparing screenshot of', fileName));
+      spinner.start();
+
+      const diffPixels = pixelmatch(originalScreenshot.data, newScreenshot.data, diff.data, originalScreenshot.width, originalScreenshot.height, {
+        threshold: 0.01
+      });
+
       diff.pack().pipe(stream);
       
       stream.on('finish', () => {
-        resolve(diffPixels);
+        spinner.stop()
+
+        let stdout = `${diffPixels > 0 ? logSymbols.error : logSymbols.success} ${fileName}`
+        diffPixels > 0 ? stdout = chalk.red(stdout) : stdout = chalk.green(stdout);
+
+        process.stdout.write(stdout)
+        resolve({name: name, diff: diffPixels});
       })
     }
   });
@@ -77,16 +92,35 @@ async function runTests() {
   }
 
   return new Promise((resolve, rejext) => {
-  const promises = screenshots.map(s => getScreenShot(repo, 'master', s))
+    const promises = screenshots.map(s => getScreenShot(repo, 'master', s))
 
     Promise.all(promises).then((data) => {
       const regressionPromises = screenshots.map((s) => checkRegression(repo, branchName, s));
 
       Promise.all(regressionPromises).then(data => {
-        resolve();
+        resolve(data);
       })
     });
   })
 }
 
-module.exports = runTests;
+function uploadShot(filePath, branchName, repo){
+  const formData = {
+    screenshot: fs.createReadStream(filePath),
+  };
+
+  return new Promise((resolve, reject) => {
+    request.post({url: `http://localhost:3001/screenshot/update?branch=${branchName}&repo=${repo}`, formData: formData},  (err, httpResponse, body) => {
+      if (err) {
+        reject(err)
+      }
+      resolve(true)
+    });
+  })
+}
+
+module.exports = {
+  getBranchName,
+  runTests,
+  uploadShot
+} 

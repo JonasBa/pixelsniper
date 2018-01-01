@@ -11,16 +11,19 @@ const prepareStyles = (stringArray = []) => {
   return stringArray.map(a => `${a} { opacity: 0 !important }`).join('\n')
 }
 
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 async function makeShot(config, page, browserPage) {
   const id = page.path;
   const name = page.name;
   const threshold = page.threshold || 0.01;
-  const timeout = page.timeout || 30000;  
+  const timeout = page.timeout || 0;
 
   const removeStyles = page.removeElements ? prepareRemoveStyles(page.removeElements) : null;
   const hideElements = page.hideElements ? prepareStyles(page.hideElements) : null;
 
   await browserPage.goto(config.baseUrl + id);
+  await wait(timeout)
   
   await browserPage.addStyleTag({
     content: (hideElements || '') + (removeStyles || '')
